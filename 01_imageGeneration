@@ -1,0 +1,61 @@
+const {S3Client,PutObjectCommand }=require("@aws-sdk/client-s3");
+const crypto=require("crypto");
+
+const uuidv4=()=>crypto.randomUUID();
+
+const s3=new S3Client({region:process.env.AWS_REGION});
+
+function generateDailySummaryImage(
+  name,
+  date,
+  income,
+  expense,
+  balance
+) {
+  return `
+  <svg width="700" height="400" xmlns="http://www.w3.org/2000/svg">
+    <rect width="700" height="400" fill="#0f172a"/>
+    <text x="50%" y="60" font-size="30" fill="#ffffff" text-anchor="middle">Daily Financial Summary</text>
+    <text x="50%" y="110" font-size="20" fill="#ffffff" text-anchor="middle">${name}</text>
+    <text x="50%" y="150" font-size="18" fill="#ffffff" text-anchor="middle">Date: ${date}</text>
+    <text x="50%" y="210" font-size="22" fill="#ffffff" text-anchor="middle">Total Income:₹${income}</text>
+    <text x="50%" y="250" font-size="22" fill="#ffffff" text-anchor="middle">Total Expense:₹${expense}</text>
+    <text x="50%" y="310" font-size="26" fill="#ffffff" text-anchor="middle">Balance:₹${balance}</text>
+  </svg>
+  `;
+}
+
+exports.handler=async(event)=>{
+  try {
+    const body=JSON.parse(event.body);
+    const {name,date,totalIncome,totalExpense,balance}=body;
+
+    const svgImage=generateDailySummaryImage(
+      name,
+      date,
+      totalIncome,
+      totalExpense,
+      balance
+    );
+
+    const fileName=`daily-summary/${uuidv4()}.svg`;
+
+    await s3.send(
+      new PutObjectCommand({
+        Bucket:process.env.AWS_BUCKET_NAME,
+        Key:fileName,
+        Body:Buffer.from(svgImage),
+        ContentType:"image/svg+xml",
+      })
+    );
+
+    const imageUrl=`https://${process.env.AWS_BUCKET_NAME}.s3.${process.env.AWS_REGION}.amazonaws.com/${fileName}`;
+
+    return {statusCode:200,body:JSON.stringify({message:"Image generated successfully",imageUrl}),
+    };
+  }catch (error){
+    console.error(error);
+    return {statusCode:500,body:JSON.stringify({message: "Failed to generate image",}),
+    };
+  }
+};
